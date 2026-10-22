@@ -472,7 +472,8 @@ def num(x):
     if x >= 1000:
         return "{:,.2f}".format(x)
     if x >= 1:
-        return "%.4f" % x
+        s = "%.4f" % x
+        return s[:-2] if s.endswith("00") else s.rstrip("0")
     return ("%.10f" % x).rstrip("0")
 
 

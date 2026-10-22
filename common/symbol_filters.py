@@ -183,3 +183,34 @@ def check_order(rules, qty, price, market=False, prices=()):
     for what, p in prices:
         out += check_price(rules, p, what)
     return out
+
+
+# ---------------------------------------------------------------- rules for one symbol, cached
+
+CACHE_HOURS = 6
+
+
+def rules_for(symbol, info_path=None, cache_dir="trader/cache", cl=None, now=None):
+    """The rules of one symbol: from an exchangeInfo file (info_path, e.g. a fixture), else from
+    a cache younger than CACHE_HOURS in cache_dir, else from Binance (weight 20) and cached."""
+    import json
+    import os
+    import time as _time
+    symbol = symbol.upper()
+    if info_path:
+        with open(info_path, encoding="utf-8") as fh:
+            return rules_of(find_symbol(json.load(fh), symbol))
+    path = os.path.join(cache_dir, "exchangeInfo-%s.json" % symbol) if cache_dir else None
+    now = _time.time() if now is None else now
+    if path and os.path.exists(path) and now - os.path.getmtime(path) < CACHE_HOURS * 3600:
+        with open(path, encoding="utf-8") as fh:
+            return rules_of(find_symbol(json.load(fh), symbol))
+    if cl is None:
+        raise FilterError("no exchange information for %s: give --exchange-info FILE or let the tool reach "
+                          "Binance" % symbol)
+    info = cl.exchange_info(symbol=symbol)
+    if path:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(info, fh)
+    return rules_of(find_symbol(info, symbol))
