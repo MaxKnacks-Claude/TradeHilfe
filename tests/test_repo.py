@@ -8,14 +8,14 @@ from _load import ROOT
 # v2, the day-trading pack: the eleven folders the reel's repo card shows
 SKILLS = ["trader-scanner", "trader-news", "trader-entry", "trader-exit", "trader-timemachine",
           "trader-risk", "trader-budget", "trader-broker", "trader-alerts", "trader-analyst",
-          "trader-pelosi"]
+          "trader-pelosi", "trader-setup"]
 ABOUT = ("Claude skills for crypto day trading on Binance spot: scan USDT pairs, time the entry, plan stop, target "
          "and max hold, replay 10,000 outcomes, size with fees, check your limits, and place on the testnet by "
          "default, never without your yes.")
 NOT_USED = ["trader-news", "trader-analyst", "trader-pelosi"]
 # skills on the way to an order carry the safety block
 ORDER_PATH = ["trader-scanner", "trader-entry", "trader-exit", "trader-timemachine", "trader-budget",
-              "trader-risk", "trader-broker", "trader-alerts"]
+              "trader-risk", "trader-broker", "trader-alerts", "trader-setup"]
 V1_ONLY = ["trader-copycat", "trader-screener", "trader-tax", "trader-rebalance"]
 
 
@@ -42,13 +42,14 @@ class Repo(unittest.TestCase):
 
     def test_root_matches_the_reel(self):
         root = sorted(d for d in os.listdir(ROOT) if not d.startswith(".git"))
-        self.assertEqual(root, sorted([".claude-plugin", "LICENSE", "README.md", "common",
-                                      "config.example.json", "tests"] + SKILLS))
+        root = [r for r in root if r != "dist"]           # build output, ignored by git
+        self.assertEqual(root, sorted([".claude-plugin", "LICENSE", "README.md", "common", "config.example.json",
+                                      "hooks", "tests", "tools"] + SKILLS))
 
     def test_gitignore_keeps_the_trader_folder_and_local_configs_out(self):
         with open(os.path.join(ROOT, ".gitignore"), encoding="utf-8") as fh:
             lines = [ln.strip() for ln in fh]
-        for pat in ("trader/", "*.local.json", "config.json", "!config.example.json", ".env"):
+        for pat in ("trader/", "*.local.json", "config.json", "!config.example.json", ".env", "dist/"):
             self.assertIn(pat, lines)
 
     def test_frontmatter_name_and_description(self):

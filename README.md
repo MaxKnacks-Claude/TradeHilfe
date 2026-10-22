@@ -24,6 +24,7 @@ flowchart LR
 
 | Befehl | Aufgabe |
 | --- | --- |
+| `/trader-setup` | Einrichtung: Config anlegen, `trader/` aus git ausschließen, Keys (nur ob vorhanden), Testnet-Verbindung und Konto prüfen. |
 | `/trader-scanner` | Universum aller handelbaren USDT-Spot-Paare, Tages-Setups und Opening-Range-Breakouts in Ihrer UTC-Sitzung. |
 | `/trader-entry` | Beobachtet ein Setup Kerze für Kerze und meldet den Einstiegsmoment. |
 | `/trader-exit` | Stop und Ziel auf der Tick-Größe des Symbols, `exit_by` = Einstieg + `max_hold_minutes`, Chance-Risiko vor und nach Gebühren. |
@@ -41,25 +42,53 @@ flowchart LR
 | `/trader-analyst` | Quartalszahlen von US-Firmen; Coins haben keine |
 | `/trader-pelosi` | Aktiengeschäfte von US-Kongressmitgliedern |
 
-## Installation
+## Schnellstart in Claude Code (empfohlen)
 
-Python 3.8 oder neuer, nur die Standardbibliothek, nichts zu installieren.
+Voraussetzungen: [Claude Code](https://code.claude.com) und Python 3.8 oder neuer. Nichts zu installieren.
 
-In Claude Code als Plugin:
+1. **Testnet-Keys** auf https://testnet.binance.vision anlegen (Login mit GitHub, „Generate HMAC_SHA256 Key“).
+2. **Keys in Ihrem Terminal setzen**, bevor Sie Claude Code starten (nie in den Chat einfügen):
 
-```
-/plugin marketplace add <Ihr-GitHub-Name>/<Ihr-Fork>
-/plugin install binance-day-trader@binance-day-trader
-```
+   ```bash
+   export BINANCE_API_KEY="..."
+   export BINANCE_API_SECRET="..."
+   ```
 
-Oder die Ordner kopieren. **Der Ordner `common/` muss mit**, er liegt neben den Skill-Ordnern:
+3. **Arbeitsordner anlegen und Claude Code starten:**
+
+   ```bash
+   mkdir -p ~/trading && cd ~/trading && claude
+   ```
+
+4. **Plugin installieren**, in Claude Code:
+
+   ```
+   /plugin marketplace add MaxKnacks-Claude/TradeHilfe
+   /plugin install binance-day-trader@binance-day-trader
+   ```
+
+   Danach Claude Code neu starten. Die Skills heißen dann `/binance-day-trader:trader-setup` usw.; Sie können aber auch einfach in Worten fragen („scan Binance nach Breakouts“).
+5. **Einrichten lassen:** „Richte die Trading-Skills ein“ bzw. `/binance-day-trader:trader-setup`. Das legt `trader/config.json` an (Testnet), schließt `trader/` aus git aus und prüft Keys, Testnet-Verbindung und Konto, ohne die Keys je anzuzeigen.
+6. **Ausprobieren:** nach 00:15 UTC (Ende der Opening Range) „Scan Binance nach Opening-Range-Breakouts“, dann die Pipeline wie unten.
+
+Das Plugin bringt einen **Hook** mit (`hooks/hooks.json`): Vor jedem `ticket.py place` und `protect` fragt Claude Code Sie zusätzlich um Erlaubnis, und Befehle, die Ihre API-Keys ausgeben würden (`echo $BINANCE_API_SECRET`, `env`), werden blockiert. Dafür müssen Sie nichts einstellen.
+
+### Alternativ: Ordner kopieren
 
 ```bash
-git clone <URL Ihres Forks> binance-day-trader
-cp -r binance-day-trader/common binance-day-trader/trader-* ~/.claude/skills/
+git clone https://github.com/MaxKnacks-Claude/TradeHilfe.git
+cp -r TradeHilfe/common TradeHilfe/trader-* ~/.claude/skills/
 ```
 
+**`common/` muss mitkopiert werden.** Ohne Plugin gibt es den Hook nicht: Übernehmen Sie dann `trader-broker/claude_settings.example.json` in `.claude/settings.json`.
+
+### Alternativ: Claude-App (claude.ai)
+
+`python3 tools/build_skill_zips.py` baut nach `dist/` je Skill eine ZIP-Datei mit eigenem `common/`, hochzuladen unter Einstellungen → Fähigkeiten → Skills. Einschränkungen: Die Skripte laufen dort in Anthropics Sandbox, deren Netzwerk Binance eventuell nicht erreicht, und Ihre Keys lägen nicht in Ihrer eigenen Umgebung. Zum Handeln ist Claude Code der richtige Weg; in der App eignen sich die Skills vor allem zum Kennenlernen mit den Offline-Daten.
+
 ## Einrichtung (Testnet)
+
+Mit dem Plugin erledigt `/trader-setup` die Schritte 3 und 5. Von Hand:
 
 1. **Testnet-Key anlegen:** auf https://testnet.binance.vision mit einem GitHub-Konto anmelden und dort einen HMAC-API-Key erzeugen. Testnet-Keys sind getrennt von echten Keys und handeln mit Spielgeld.
 2. **Keys nur als Umgebungsvariablen**, nie in einer Datei im Repo, nie im Chat:
@@ -217,6 +246,10 @@ Alle Tests laufen offline: `tests/_load.py` sperrt jeden Netzwerkzugriff, ein Te
 ## Dateien
 
 ```
+.claude-plugin/      plugin.json, marketplace.json
+hooks/               hooks.json, order_guard.py (Rückfrage vor jeder Order, keine Keys ausgeben)
+trader-setup/        SKILL.md, setup.py
+tools/               build_skill_zips.py (ZIPs für die Claude-App)
 common/              binance_client.py, symbol_filters.py, trading_session.py, trader_config.py, order_math.py
 config.example.json  Vorlage für trader/config.json (ohne Keys)
 trader-scanner/      SKILL.md, scan.py

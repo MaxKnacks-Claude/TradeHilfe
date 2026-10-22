@@ -1,0 +1,17 @@
+{
+  "description": "binance-day-trader order guard: ask before every ticket.py place / protect, never print API keys",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/order_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

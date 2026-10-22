@@ -43,7 +43,10 @@ import os
 import re
 import sys
 
-_COMMON = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "common"))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_COMMON = next((p for p in (os.path.join(_HERE, "common"), os.path.join(_HERE, os.pardir, "common"))
+                if os.path.isfile(os.path.join(p, "binance_client.py"))), os.path.join(_HERE, os.pardir, "common"))
+_COMMON = os.path.abspath(_COMMON)
 if _COMMON not in sys.path:
     sys.path.insert(0, _COMMON)
 try:
