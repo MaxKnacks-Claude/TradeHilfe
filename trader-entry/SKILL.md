@@ -1,144 +1,106 @@
 ---
 name: trader-entry
 description: >-
-  Entry Timer. Watches a setup bar by bar and tells you the moment to get in.
-  Reads free Yahoo 1-minute or 5-minute bars, builds the opening range (the
-  first 15 minutes by default) and calls the entry on the first completed bar
-  that CLOSES above the range high, or above a level you give it (like a
-  20-day high from the scanner), with an optional volume check. Says waiting
-  and how far, triggered with the time and the price, expired, or not open
-  yet, and writes trader/entry.json for /trader-exit. Long side only. It never
-  places an order. Use when the user says "tell me when to get in", "watch
-  TSLA", "has it broken out", "did it break the opening range", "entry
-  signal", "time my entry", "check my watchlist", or after /trader-scanner
-  and /trader-news, before /trader-exit.
-argument-hint: "[TICKER] [--setup orb|level] [--interval 5m|1m]"
+  Entry Timer for Binance spot. Watches a setup candle by candle and tells you
+  the moment to get in. Reads Binance 5-minute or 1-minute candles, builds the
+  opening range of your configured UTC session (the first 15 minutes by
+  default) and calls the entry on the first completed candle that CLOSES above
+  the range high, or above a level you give it (like a 20-day high from the
+  scanner), with an optional volume check. Says waiting and how far,
+  triggered with the time and the price, or expired after your entry window,
+  and writes trader/entry.json for /trader-exit. Long only. It never places an
+  order. Use when the user says "tell me when to get in", "watch BTC", "has
+  it broken out", "did it break the opening range", "entry signal", "time my
+  entry", "check my watchlist", or after /trader-scanner, before /trader-exit.
+argument-hint: "[SYMBOL] [--setup orb|level] [--interval 5m|1m]"
 ---
 
 # trader-entry
 
-The Entry Timer turns a setup into one moment: the bar that confirms it. It
-reads bars, 1-minute or 5-minute, and waits for each one to finish. A price
-that pokes above the high in the middle of a bar is not an entry. A bar that
-CLOSES above it is. Then it says the time and the price, writes them down for
-the Exit Planner, and stops. It never buys anything. Day trading loses most
-people money, and a clean signal does not change that.
+The Entry Timer turns a setup into one moment: the candle that confirms it. It
+waits for the close, because a wick above the high that falls back is not a
+breakout. It says what it sees and nothing more: "triggered" is a rule that
+fired, not a promise that the price keeps going.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA                  # 15-minute opening range, 5-minute bars
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --write          # also save trader/entry.json
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --setup level --level 371.20
-python3 "${CLAUDE_SKILL_DIR}/entry.py" check TSLA --interval 1m --min-volume-x 1.5
-python3 "${CLAUDE_SKILL_DIR}/entry.py" watch TSLA --until 15:30    # one line per closed bar, stops on the trigger
-python3 "${CLAUDE_SKILL_DIR}/entry.py" watchlist                   # every hit in trader/watchlist.json
+python3 "${CLAUDE_SKILL_DIR}/entry.py" check BTCUSDT                       # opening-range breakout, 5m candles
+python3 "${CLAUDE_SKILL_DIR}/entry.py" check BTCUSDT --write               # -> trader/entry.json
+python3 "${CLAUDE_SKILL_DIR}/entry.py" check ETHUSDT --setup level --level 2500
+python3 "${CLAUDE_SKILL_DIR}/entry.py" check BTCUSDT --interval 1m --min-volume-x 1.5
+python3 "${CLAUDE_SKILL_DIR}/entry.py" watch BTCUSDT --every 15 --until 05:30   # one line per closed candle
+python3 "${CLAUDE_SKILL_DIR}/entry.py" watchlist                           # every hit in trader/watchlist.json
 ```
 
-Other flags: `--or-minutes N` (default 15), `--json`, `--offline FILE` (a
-saved Yahoo chart JSON, `.json` or `.json.gz`, or a folder of
-`<TICKER>.json`), `--now "2026-10-19 10:15"` (New York time) to replay a day.
-`watch` with `--now` or `--offline` runs on a simulated clock and replays the
-day bar by bar without waiting.
+`--now "2026-10-19 02:00"` pins the clock (UTC); `--offline FILE` reads a saved
+klines answer. Exit code 0 = triggered.
 
 ## What it reads and writes
 
 | file | what |
 | --- | --- |
-| `trader/watchlist.json` | the scanner's hits (`hits[].symbol`), for `watchlist` |
-| `trader/config.json` | `no_entries_before` (09:45) and `no_entries_after` (15:30), New York time. Optional |
-| Yahoo chart API | today's bars, `range=1d&interval=5m` (or `1m`): free, unofficial, can lag |
-| `trader/entry.json` | with `check --write`, or when `watch` triggers: symbol, setup, status, time, bar, price, level, opening range |
+| `trader/config.json` | `session_start_utc`, `opening_range_minutes`, `entry_window_minutes` |
+| `trader/watchlist.json` | the scanner's hits, for `watchlist` |
+| `trader/entry.json` | written by `check --write` and by `watch` on a trigger: symbol, setup, session, status, the trigger candle's close time (UTC) and price, the opening range |
 
 ## The rule
 
-- **Opening range (orb).** The high and low of the first 15 minutes: the
-  9:30, 9:35 and 9:40 five-minute bars, or fifteen 1-minute bars. The level
-  to beat is the range high.
-- **Level.** A price you give, like a 20-day high from `/trader-scanner`.
-- **The trigger** is the first completed bar after the range that CLOSES
-  above the level. A wick above is not a trigger. A close exactly at the
-  level is not above it.
-- **The time** is that bar's close time (the 10:10 bar closes at 10:15 AM).
-  The price is its close, to the cent.
-- **Only closed bars count.** A bar is closed when the clock passes its start
-  plus 5 (or 1) minutes and Yahoo has caught up to that moment (it waits a
-  minute at most). Yahoo's live tick, like 10:49:45, is never a bar.
-- **Volume, if you want it.** `--min-volume-x 1.5` also needs the trigger
-  bar's volume at 1.5 times the range bars' average. The 9:30 bar holds the
-  opening auction, so 1.0 is already strict.
-- **Time limits.** No entries before 9:45 or after 15:30 (config). On a 1:00
-  p.m. early close the cutoff moves up with the close, to 12:30.
-- **What it says.** Waiting (and how far the last close is from the level),
-  triggered, expired, or no data. Before 9:30: not open yet. Before 9:45: the
-  range is still forming. Weekends and NYSE holidays: the market is closed.
+1. The session starts at `session_start_utc` every day and lasts 24 hours. The
+   opening range is the high and low of its first `opening_range_minutes`.
+2. A candle counts only once it has closed (its open time + the interval). The
+   one still forming is shown, never used.
+3. Triggered: the first closed candle after the range whose CLOSE is above the
+   range high (or above `--level`). Its time is the candle's close time; its
+   price is that close, exactly as Binance reports it, no rounding.
+4. `--min-volume-x X`: the trigger candle also needs X times the average volume of
+   the range candles.
+5. Expired: no trigger by `entry_window_minutes` after the session start (360 by
+   default, so 06:00 UTC). A trade found later is a different trade.
 
 ## Steps
 
-1. Get the symbol from the user, or run `entry.py watchlist` after
-   `/trader-scanner`. Check `/trader-news` for it first.
-2. Run `entry.py check SYMBOL`. Tell the user the status in one line:
-   waiting and how far, triggered at what time and price, or expired.
-3. To wait for it, Claude can run `entry.py watch SYMBOL --until 15:30` in
-   the background, or `entry.py check SYMBOL --write` on a `/loop` every 5
-   minutes. `watch` wakes just after each bar closes, prints one line per
-   bar, and exits 0 on the trigger (it writes `trader/entry.json`) or 1 when
-   the setup expires. Keep the computer awake while it watches: a sleeping
-   laptop pauses it, and it catches up, late, when it wakes.
-4. When it triggers, say the time and the price, and that nothing was placed.
-   If the trigger is more than a bar old, say that too: a late entry is a
-   different trade.
-5. Hand off to `/trader-exit` to set the stop and the target BEFORE anything
-   is bought.
+1. `entry.py check SYMBOL`. Say the status in one line: waiting and how far,
+   triggered at what time and price, or expired.
+2. To wait for it: `entry.py watch SYMBOL`. It sleeps until each candle closes.
+3. On a trigger: `entry.py check SYMBOL --write`, then `/trader-exit` sets the
+   stop, the target and the latest exit BEFORE anything is bought.
+4. A trigger more than one candle old is stale: say so, the price has moved.
 
-## Example: the reel
+## Example: the test data
 
-TSLA, Monday 2026-10-19, 5-minute bars. The opening range is 354.47 to
-362.18. At 10:12 the 10:10 bar is still open, so it waits:
+Synthetic BTCUSDT candles, session 2026-10-19:
 
 ```
-WAITING  last close $361.68 (10:05 bar), $0.50 under the range high $362.18 (-0.14%).
-The 10:10 bar is still forming ($364.18 so far, closes 10:15 AM); it does not count until it closes.
-```
-
-At 10:15 the bar has closed:
-
-```
-TSLA  Mon 2026-10-19 10:15 ET  opening-range breakout (15-minute range) on 5-minute bars (Yahoo, free, can lag)
-Opening range 9:30-9:45: high $362.18, low $354.47 (3 of 3 bars).
-TRIGGERED 10:15 AM at $364.18: the 10:10 bar (bar 8) closed above the range high $362.18 (+0.55%).
+python3 entry.py check BTCUSDT --offline tests/fixtures/binance/klines-BTCUSDT-5m-2026-10-19.json --now "2026-10-19 02:00"
+Opening range 00:00-00:15 UTC: high 52,680.36, low 52,410.22 (3 of 3 candles).
+TRIGGERED 02:00 UTC at 52,730.00: the 01:55 candle (candle 23) closed above the range high 52,680.36 (+0.09%).
 This is the moment to get in, if you take the trade. Nothing was placed.
-Next: set the stop and target BEFORE you buy: /trader-exit (exit.py plan --from trader/entry.json).
 ```
 
-With `--min-volume-x 1` the 10:10 bar is too thin (0.60x the range's volume)
-and the trigger moves to 10:35 AM at 365.75 (the 10:30 bar, 7.98x).
+At 01:58 the same command says WAITING: the 01:55 candle was above the high, but
+it had not closed yet.
 
 ## Rules
 
-- Bar by bar, on free Yahoo 1-minute or 5-minute bars. They are unofficial
-  and can lag. Say so when a minute matters.
-- A signal is information, not an order, and not a promise. Nothing here
-  promises winning trades or money.
-- Long side only. v2 plans longs only. If the user wants a short, say that.
-- One trigger per setup per day: the first close above. Later closes do not
-  reset it.
-- Never call an entry early because a bar looks like it will close above.
+- Say "the rule fired", never "buy now" as advice.
+- Always give the UTC time and the price of the trigger candle.
+- Never call a forming candle a trigger.
+- A trigger after the entry window is "expired", whatever the price did.
 
 ## What it never does
 
-It never places an order, never sizes a position, never sets the stop (that
-is `/trader-exit`), never moves the level after the fact, and never counts a
-bar that has not closed. It never runs `/trader-broker` from a background
-watch: nobody is there to say yes.
+It never places, sizes or checks an order, never moves a level to make a trigger
+happen, and never calls a signed endpoint.
 
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
+- Testnet by default (`"testnet": true`). Live trading needs `"testnet": false` in the config AND `--live`,
+  and is the user's own decision.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
-  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+  passed that exact order in this session, the user typed an explicit yes for that one order, and
+  `ticket.py place` is called with the one-time code within 5 minutes. Keep
+  `Bash(python3 *ticket.py place*)` on "ask" in Claude Code; never "allow".
+- Spot only: no margin, futures, leverage, short selling or withdrawals. The client cannot call those endpoints.
+- API keys live in `BINANCE_API_KEY` / `BINANCE_API_SECRET` in the environment, never in a file, the chat or a log.

@@ -1,7 +1,7 @@
 ---
 name: trader-news
 description: >-
-  News Monitor. Tracks breaking news on every stock you watch and flags what
+  OPTIONAL, NOT IN THE BINANCE PIPELINE (kept from the stock version; it reads US stock feeds, not crypto news). News Monitor. Tracks breaking news on every stock you watch and flags what
   moves it: Yahoo Finance headlines per ticker, each company's 8-K filings on
   SEC EDGAR (earnings, CEO changes, deals, restatements, bankruptcy) and how
   far each stock is from yesterday's close. Shows only what is new since the
@@ -14,6 +14,11 @@ argument-hint: "[tickers]"
 ---
 
 # trader-news
+
+> **Not used in the Binance pipeline.** This skill reads Yahoo Finance headlines and SEC 8-K filings for US
+> stocks. It is kept unchanged from the original pack and is not part of scanner -> entry -> exit ->
+> timemachine -> budget -> risk -> broker -> alerts. Free crypto news sources are proposed in the README;
+> none is built in yet. Only run this skill when the user asks for US stock news by name.
 
 A chart can look perfect and still be about to gap on an earnings date, a
 halt or a lawsuit. Before a setup becomes a trade, this skill reads the two
@@ -99,6 +104,12 @@ ticker has no news, say so rather than padding the brief.
 
 ## Safety
 
-Education and tooling, not financial advice. This skill only reads and
-reports. Nothing places an order except `/trader-broker`, after
-`/trader-risk` passes and the user types an explicit yes for that order.
+- Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
+- Testnet by default (`"testnet": true`). Live trading needs `"testnet": false` in the config AND `--live`,
+  and is the user's own decision.
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order in this session, the user typed an explicit yes for that one order, and
+  `ticket.py place` is called with the one-time code within 5 minutes. Keep
+  `Bash(python3 *ticket.py place*)` on "ask" in Claude Code; never "allow".
+- Spot only: no margin, futures, leverage, short selling or withdrawals. The client cannot call those endpoints.
+- API keys live in `BINANCE_API_KEY` / `BINANCE_API_SECRET` in the environment, never in a file, the chat or a log.

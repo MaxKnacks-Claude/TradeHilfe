@@ -9,11 +9,13 @@ from _load import ROOT
 SKILLS = ["trader-scanner", "trader-news", "trader-entry", "trader-exit", "trader-timemachine",
           "trader-risk", "trader-budget", "trader-broker", "trader-alerts", "trader-analyst",
           "trader-pelosi"]
-ABOUT = ("11 Claude skills for day trading: scan thousands of charts, track breaking news, time every "
-         "entry and exit, and replay every outcome before you risk a dollar.")
+ABOUT = ("Claude skills for crypto day trading on Binance spot: scan USDT pairs, time the entry, plan stop, target "
+         "and max hold, replay 10,000 outcomes, size with fees, check your limits, and place on the testnet by "
+         "default, never without your yes.")
+NOT_USED = ["trader-news", "trader-analyst", "trader-pelosi"]
 # skills on the way to an order carry the safety block
 ORDER_PATH = ["trader-scanner", "trader-entry", "trader-exit", "trader-timemachine", "trader-budget",
-              "trader-pelosi", "trader-risk", "trader-broker", "trader-alerts"]
+              "trader-risk", "trader-broker", "trader-alerts"]
 V1_ONLY = ["trader-copycat", "trader-screener", "trader-tax", "trader-rebalance"]
 
 
@@ -67,26 +69,45 @@ class Repo(unittest.TestCase):
     def test_plugin_manifest_points_at_the_root_skills(self):
         with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as fh:
             plugin = json.load(fh)
-        self.assertEqual(plugin["name"], "day-trader-skill")
+        self.assertEqual(plugin["name"], "binance-day-trader")
         self.assertEqual(plugin["skills"], "./")
         self.assertEqual(plugin["description"], ABOUT)
+        self.assertEqual(plugin["license"], "MIT")
         with open(os.path.join(ROOT, ".claude-plugin", "marketplace.json")) as fh:
             market = json.load(fh)
-        self.assertEqual(market["name"], "day-trader-skill")
-        self.assertEqual(market["plugins"][0]["name"], "day-trader-skill")
+        self.assertEqual(market["name"], "binance-day-trader")
+        self.assertEqual(market["plugins"][0]["name"], "binance-day-trader")
 
-    def test_readme_carries_the_reel_copy(self):
+    def test_readme_explains_setup_and_risks(self):
         with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:
             readme = " ".join(fh.read().split())
-        self.assertTrue(readme.startswith("# The Day Trader skill"))
-        for line in (ABOUT,
-                     "https://github.com/Jakeschincariol/day-trader-skill install skill",
-                     "/plugin marketplace add Jakeschincariol/day-trader-skill",
-                     "/plugin install day-trader-skill@day-trader-skill",
-                     "## Fine print"):
+        self.assertTrue(readme.startswith("# Binance Day Trader"))
+        for line in ("github.com/Jakeschincariol/day-trader-skill", "## Einrichtung (Testnet)", "## Risiken",
+                     "BINANCE_API_KEY", "BINANCE_API_SECRET", "Enable Withdrawals", "IP-Beschränkung",
+                     "## Keine Order ohne Ihre Bestätigung", "## Testnet-Durchlauf", "\"testnet\": false",
+                     "--live", "Nicht genutzt", "flowchart LR"):
             self.assertIn(line, readme)
         for s in SKILLS:
             self.assertIn("/" + s, readme, s)
+
+    def test_license_is_the_original(self):
+        with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertTrue(text.startswith("MIT License\n\nCopyright (c) 2026 Jake Schincariol\n"))
+
+    def test_unused_skills_say_so(self):
+        for s in NOT_USED:
+            fm, text = frontmatter(os.path.join(ROOT, s, "SKILL.md"))
+            self.assertIn("NOT", fm.split("description:")[1][:40].upper(), s)
+            self.assertIn("Not used in the Binance pipeline", text, s)
+
+    def test_pipeline_skills_speak_binance(self):
+        for s in sorted(set(SKILLS) - set(NOT_USED)):
+            _, text = frontmatter(os.path.join(ROOT, s, "SKILL.md"))
+            self.assertIn("Binance", text, s)
+            self.assertIn("testnet", text.lower(), s)
+            for old in ("Alpaca", "Yahoo", "NYSE", "place_stock_order", "\"paper\""):
+                self.assertNotIn(old, text, "%s still mentions %s" % (s, old))
 
     def test_no_em_dashes_and_no_personal_email(self):
         for path in every_text_file():
@@ -109,7 +130,7 @@ class Repo(unittest.TestCase):
 
     def test_every_tool_runs_on_python_3_8(self):
         # no 3.9+ only modules or syntax in the tools (the README promises 3.8)
-        for s in SKILLS:
+        for s in SKILLS + ["common"]:
             folder = os.path.join(ROOT, s)
             for f in os.listdir(folder):
                 if not f.endswith(".py"):

@@ -1,7 +1,7 @@
 ---
 name: trader-pelosi
 description: >-
-  The Pelosi Tracker. Watches the stock trades members of Congress must
+  NOT USED IN THE BINANCE PIPELINE (kept from the stock version; Congress discloses stock trades). The Pelosi Tracker. Watches the stock trades members of Congress must
   disclose under the STOCK Act: reads the House Clerk's public Periodic
   Transaction Reports (PTRs) as soon as they are posted, alerts once per new
   filing, and turns each PDF into clean rows (who, owner, stock, ticker,
@@ -15,6 +15,9 @@ argument-hint: "[member name] [--read]"
 ---
 
 # trader-pelosi
+
+> **Not used in the Binance pipeline.** It reads US Congress stock-trade disclosures. Kept unchanged from
+> the original stock pack and not part of the crypto pipeline. Only run it when the user asks for it by name.
 
 Members of Congress have to report their trades, their spouse's and their
 dependent children's. The House Clerk posts every report as a PDF and lists
@@ -143,16 +146,12 @@ does not click it or automate it. The route:
 
 ## Safety
 
-- Education and tooling, not financial advice. Nothing in this pack is a
-  recommendation to buy or sell anything.
-- Paper trading by default (`"paper": true` in `trader/config.json`).
-- Nothing places an order except `/trader-broker`, and only after
-  `/trader-risk` passes AND the user types an explicit yes for that order in
-  the chat, AND the brokerage tool is set to "Needs approval" in Claude
-  (Customize > Connectors > tool permissions) so Claude's own "Allow once /
-  Deny" card appears too. Never "Always allow" an order tool.
-- No options, margin, shorting or leverage unless the config allows it and
-  the user confirms.
-- Congressional trades are PUBLIC disclosures filed up to 45 days after the
-  trade (STOCK Act). This skill reads them fast; it has no inside
-  information, and it says so.
+- Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
+- Testnet by default (`"testnet": true`). Live trading needs `"testnet": false` in the config AND `--live`,
+  and is the user's own decision.
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order in this session, the user typed an explicit yes for that one order, and
+  `ticket.py place` is called with the one-time code within 5 minutes. Keep
+  `Bash(python3 *ticket.py place*)` on "ask" in Claude Code; never "allow".
+- Spot only: no margin, futures, leverage, short selling or withdrawals. The client cannot call those endpoints.
+- API keys live in `BINANCE_API_KEY` / `BINANCE_API_SECRET` in the environment, never in a file, the chat or a log.

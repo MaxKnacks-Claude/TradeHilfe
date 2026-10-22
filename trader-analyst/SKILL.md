@@ -1,7 +1,7 @@
 ---
 name: trader-analyst
 description: >-
-  The Earnings Analyst. Reads a company's reported numbers straight from SEC
+  NOT USED IN THE BINANCE PIPELINE (kept from the stock version; coins have no earnings reports). The Earnings Analyst. Reads a company's reported numbers straight from SEC
   EDGAR (XBRL company facts from its 10-Qs and 10-Ks, plus the latest earnings
   8-K and its press release) and sums up what changed: revenue, gross,
   operating and net margins, net income and diluted EPS, quarter by quarter,
@@ -15,6 +15,10 @@ argument-hint: "[tickers]"
 ---
 
 # trader-analyst
+
+> **Not used in the Binance pipeline.** Coins file no 10-Qs or 10-Ks. This skill is kept unchanged from
+> the original stock pack and is not part of the crypto pipeline. Only run it when the user asks about a
+> US company's earnings by name.
 
 Earnings move stocks more than anything else on the calendar, and the press
 release is written to put the best number first. This skill reads the numbers
@@ -118,6 +122,12 @@ so the summary read that 10-Q directly.
 
 ## Safety
 
-Education and tooling, not financial advice. This skill only reads filings.
-Nothing places an order except `/trader-broker`, after `/trader-risk` passes
-and the user types an explicit yes for that order.
+- Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
+- Testnet by default (`"testnet": true`). Live trading needs `"testnet": false` in the config AND `--live`,
+  and is the user's own decision.
+- Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
+  passed that exact order in this session, the user typed an explicit yes for that one order, and
+  `ticket.py place` is called with the one-time code within 5 minutes. Keep
+  `Bash(python3 *ticket.py place*)` on "ask" in Claude Code; never "allow".
+- Spot only: no margin, futures, leverage, short selling or withdrawals. The client cannot call those endpoints.
+- API keys live in `BINANCE_API_KEY` / `BINANCE_API_SECRET` in the environment, never in a file, the chat or a log.

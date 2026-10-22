@@ -1,216 +1,236 @@
-# The Day Trader skill
+# Binance Day Trader
 
-11 Claude skills for day trading: scan thousands of charts, track breaking news, time every entry and exit, and replay every outcome before you risk a dollar.
+Claude-Skills für Krypto-Day-Trading auf dem Binance Spot-Markt (USDT-Paare wie BTCUSDT, ETHUSDT): Charts scannen, den Einstieg timen, Stop, Ziel und spätestes Ausstiegsdatum vorher festlegen, den Trade 10.000-mal durchspielen, die Größe inklusive Gebühren berechnen, gegen Ihre Limits prüfen und erst nach Ihrem ausdrücklichen Ja an Binance senden. Standard ist das **Spot-Testnet**.
 
-Free, MIT, no signup, no API key. The tools are plain Python that read free
-public data: Yahoo Finance charts, Nasdaq Trader's symbol lists, SEC EDGAR
-and the House Clerk.
+Dies ist ein Fork von [github.com/Jakeschincariol/day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) (MIT, Copyright (c) 2026 Jake Schincariol). Die Architektur ist dieselbe: eine Pipeline aus Skills, die über den Ordner `trader/` Daten austauschen. Datenquelle und Broker sind jetzt Binance statt Yahoo Finance und Alpaca. Lizenz: siehe `LICENSE` (unverändert).
 
-One scans thousands of charts for setups. Another tracks breaking news on
-every stock you watch. One watches a setup bar by bar and tells you the moment
-to get in, and another sets your stop and your target before you do. And the
-craziest one is the Time Machine: before you risk a dollar, it replays the
-rest of the session 10,000 times from the stock's own recent bars, plus every
-past day the same setup fired, and tells you the honest odds.
+> **Nur Werkzeug, keine Anlageberatung.** Die meisten Day-Trader verlieren Geld. Krypto handelt rund um die Uhr, schwankt stark und kennt keine Handelsaussetzung, die Sie schützt. Lesen Sie den Abschnitt [Risiken](#risiken), bevor Sie echtes Geld einsetzen.
 
-And no trade goes through until you say yes. Nothing in this pack can place
-an order on its own. Paper trading is the default.
+## Ablauf
 
-> **Looking for the original Trader skill?** Copy an investor's 13F, the
-> stock screener, tax lots and rebalancing live in
-> [github.com/Jakeschincariol/trader-skill](https://github.com/Jakeschincariol/trader-skill).
-> This repo is its day-trading sequel: the Trader skill v2.
-
-## Install
-
-Paste this into Claude:
-
-```
-https://github.com/Jakeschincariol/day-trader-skill
-
-install skill
+```mermaid
+flowchart LR
+    A[scanner] --> B[entry]
+    B --> C[exit]
+    C --> D[timemachine]
+    D --> E[budget]
+    E --> F[risk]
+    F -->|PASS| G{Bestätigung<br/>durch Sie}
+    F -->|BLOCK| X[Abbruch mit Grund]
+    G -->|ja| H[broker<br/>Testnet-Standard]
+    G -->|nein| X
+    H --> I[alerts]
 ```
 
-Or as a plugin, in Claude Code:
+| Befehl | Aufgabe |
+| --- | --- |
+| `/trader-scanner` | Universum aller handelbaren USDT-Spot-Paare, Tages-Setups und Opening-Range-Breakouts in Ihrer UTC-Sitzung. |
+| `/trader-entry` | Beobachtet ein Setup Kerze für Kerze und meldet den Einstiegsmoment. |
+| `/trader-exit` | Stop und Ziel auf der Tick-Größe des Symbols, `exit_by` = Einstieg + `max_hold_minutes`, Chance-Risiko vor und nach Gebühren. |
+| `/trader-timemachine` | 10.000 Simulationen der Haltezeit aus den eigenen Kerzen des Coins plus die Regel auf allen vergangenen Sitzungen, ehrlich mit Wahrscheinlichkeiten und R nach Gebühren. |
+| `/trader-budget` | Positionsgröße in Bruchteilen (`stepSize`), Preise auf `tickSize`, Mindest-Notional, Max-Verlust inklusive beider Gebühren. |
+| `/trader-risk` | PASS oder BLOCK mit Begründung: Verlust, Tageslimit, Trades pro Tag, Chance-Risiko, Größe, USDT, Binance-Filter, Eintragsfenster. |
+| `/trader-broker` | Ticket in Klartext, Ihr Ja, dann Einstieg und sofort die OCO (Ziel und Stop). Testnet standardmäßig. |
+| `/trader-alerts` | Alarme für Stop, Ziel und das Erreichen von `max_hold_minutes`, Sitzungsuhr, Kurse. |
+
+**Nicht genutzt** (unverändert aus dem Aktien-Original, nicht in der Pipeline, nicht gelöscht):
+
+| Befehl | warum nicht |
+| --- | --- |
+| `/trader-news` | liest US-Aktien-News (Yahoo, SEC 8-K); optional, siehe [Krypto-News](#krypto-news-vorschläge) |
+| `/trader-analyst` | Quartalszahlen von US-Firmen; Coins haben keine |
+| `/trader-pelosi` | Aktiengeschäfte von US-Kongressmitgliedern |
+
+## Installation
+
+Python 3.8 oder neuer, nur die Standardbibliothek, nichts zu installieren.
+
+In Claude Code als Plugin:
 
 ```
-/plugin marketplace add Jakeschincariol/day-trader-skill
-/plugin install day-trader-skill@day-trader-skill
+/plugin marketplace add <Ihr-GitHub-Name>/<Ihr-Fork>
+/plugin install binance-day-trader@binance-day-trader
 ```
 
-Claude Code namespaces plugin skills, so installed as a plugin they show up as
-`/day-trader-skill:trader-scanner` and so on. Copy the folders instead if you want
-plain `/trader-scanner`:
+Oder die Ordner kopieren. **Der Ordner `common/` muss mit**, er liegt neben den Skill-Ordnern:
 
 ```bash
-git clone https://github.com/Jakeschincariol/day-trader-skill.git
-cp -r day-trader-skill/trader-* ~/.claude/skills/
+git clone <URL Ihres Forks> binance-day-trader
+cp -r binance-day-trader/common binance-day-trader/trader-* ~/.claude/skills/
 ```
 
-Project-local instead of global: copy the same folders into your repo's
-`.claude/skills/`. No Claude Code at all? Paste any single `SKILL.md` at the
-top of a chat and it runs as a mode. You lose the Python tools, but the method
-works.
+## Einrichtung (Testnet)
 
-The tools need Python 3.8 or newer. Nothing to pip install. The SEC tools
-(news filings, the analyst) ask you to identify yourself: put your name and
-email in `trader/config.json` (`"sec_user_agent": "Your Name you@example.com"`)
-or in the `SEC_USER_AGENT` environment variable.
+1. **Testnet-Key anlegen:** auf https://testnet.binance.vision mit einem GitHub-Konto anmelden und dort einen HMAC-API-Key erzeugen. Testnet-Keys sind getrennt von echten Keys und handeln mit Spielgeld.
+2. **Keys nur als Umgebungsvariablen**, nie in einer Datei im Repo, nie im Chat:
 
-## The eleven
+   ```bash
+   export BINANCE_API_KEY="..."
+   export BINANCE_API_SECRET="..."
+   ```
 
-| command | job | what it does |
+   Die Tools lesen sie nur aus der Umgebung und geben sie nie aus, auch nicht teilweise. Eine `trader/config.json`, die Keys enthält, wird abgelehnt.
+3. **Konfiguration:** `mkdir -p trader && cp config.example.json trader/config.json`, dann Ihre Zahlen eintragen. `trader/` steht in `.gitignore` und wird nie eingecheckt.
+4. **Rückfrage vor jeder Order:** Den Inhalt von `trader-broker/claude_settings.example.json` in `.claude/settings.json` übernehmen. Dann fragt Claude Code vor jedem `ticket.py place` und `protect` noch einmal nach. Diese Befehle nie auf „allow“ setzen.
+5. **Prüfen:** `python3 trader-broker/ticket.py account` zeigt die Testnet-Guthaben (nur lesend).
+
+## API-Key für echtes Geld
+
+Wenn Sie irgendwann live handeln wollen, legen Sie auf binance.com einen **eigenen** Key an:
+
+- **nur** „Enable Spot & Margin Trading“ (bzw. Spot-Handel) aktivieren, nichts anderes,
+- **„Enable Withdrawals“ AUS**, kein Margin, keine Futures, kein Universal Transfer,
+- **IP-Beschränkung** auf Ihre feste IP („Restrict access to trusted IPs only“),
+- Key und Secret nur als Umgebungsvariablen, und den Key sofort widerrufen, wenn er je in einem Chat, Log oder Repo gelandet ist.
+
+Der Code selbst kann keine Auszahlungen, kein Margin, keine Futures und keinen Hebel: Der gemeinsame Client lässt nur eine feste Liste von Spot-Endpunkten zu, alles andere (`/sapi`, `/fapi`, Withdraw ...) wird abgelehnt, bevor ein Byte gesendet wird. Ein Test stellt das sicher.
+
+## Konfiguration (`trader/config.json`)
+
+| Schlüssel | Standard | Bedeutung |
 | --- | --- | --- |
-| `/trader-scanner` | Chart Scanner | Scans thousands of charts for setups: opening-range breakouts, flags, oversold bounces. |
-| `/trader-news` | News Monitor | Tracks breaking news on every stock you watch and flags what moves it. |
-| `/trader-entry` | Entry Timer | Watches a setup bar by bar and tells you the moment to get in. |
-| `/trader-exit` | Exit Planner | Sets your stop and your target before you enter, so you know when to get out. |
-| `/trader-timemachine` | Time Machine | Replays every possible outcome of a trade before you risk a dollar: 10,000 simulated sessions plus every past time the setup fired. |
-| `/trader-risk` | Risk Manager | Checks every trade against your limits and stops anything over them. |
-| `/trader-budget` | Budget Manager | Sizes every position to your budget and your max loss per trade. |
-| `/trader-broker` | Order Executor | Sends approved orders to your broker, paper trading by default, never without your yes. |
-| `/trader-alerts` | Price Alerts | Rings when a price, a stop or the opening bell hits. |
-| `/trader-analyst` | Earnings Analyst | Reads earnings reports and sums up what changed. |
-| `/trader-pelosi` | Pelosi Tracker | Reads Congress's stock-trade disclosures the minute they are filed. |
+| `testnet` | `true` | `false` nur für Live, und dann zusätzlich `--live` bei jedem Aufruf |
+| `market_data` | `"trading"` | Chartdaten vom selben Ort wie die Orders; `"live"` liest echte Marktdaten (ohne Key), auch wenn auf dem Testnet gehandelt wird |
+| `quote_asset` | `"USDT"` | Quote-Währung, alle Geldbeträge darin |
+| `symbols` | BTC, ETH, SOL, BNB, XRP | Watchlist, solange es kein `trader/universe.txt` gibt |
+| `budget`, `cash_buffer_pct` | 1000, 10 | Budget und Cash-Puffer |
+| `max_position_pct`, `max_order`, `min_order` | 50, 500, 10 | Größenlimits |
+| `max_loss_per_trade` | 10 | Max-Verlust pro Trade am Stop, **inklusive Gebühren** |
+| `max_daily_loss`, `max_trades_per_day`, `max_orders_per_day` | 30, 3, 10 | Tageslimits (pro Sitzung) |
+| `min_reward_risk` | 1.5 | Mindest-Chance-Risiko **nach Gebühren** |
+| `fee_rate` | 0.001 | Handelsgebühr pro Seite (0,1 %) |
+| `stop_limit_offset_pct` | 0.5 | Limit unter dem Stop, falls ein Symbol keine STOP_LOSS-Order kennt |
+| `session_start_utc` | `"00:00"` | Beginn der 24-Stunden-Sitzung (UTC) |
+| `opening_range_minutes` | 15 | Länge der Opening Range |
+| `entry_window_minutes` | 360 | neue Einstiege nur bis so viele Minuten nach Sitzungsbeginn |
+| `max_hold_minutes` | 240 | spätestens so lange nach dem Einstieg raus, Gewinn oder Verlust |
+| `history_days` | 60 | Historie für die Timemachine |
+| `min_quote_volume_24h` | 5.000.000 | Volumenfilter für das Scanner-Universum |
+| `exclude_leveraged_tokens`, `exclude_stable_pairs` | `true` | BTCUP/ETHBEAR und Stablecoin-Paare raus |
+| `blocked` | `[]` | Symbole, die nie gehandelt werden |
 
-## How to use it
+**Sitzung:** Krypto läuft 24/7, also legt die Config die „Sitzung“ fest. Sie beginnt täglich um `session_start_utc` und dauert 24 Stunden. Eine Sitzung, die um 22:00 UTC beginnt, läuft über Mitternacht und heißt nach dem Tag ihres Beginns. Alle Zeiten intern und in der Ausgabe sind UTC.
 
-Everything lands in a `trader/` folder in your project, and each skill reads
-what the last one wrote:
+**Gebühren:** Binance zieht die Kaufgebühr in der gekauften Coin ab. Wer 0,00948 BTC kauft, erhält 0,00947052 BTC; die OCO kann deshalb nur 0,00947 verkaufen. Budget, Risk und Broker rechnen mit genau diesem Betrag. Ein enger Stop macht die Gebühren teuer: Bei 0,35 % Stop-Abstand sind gut die Hälfte des Verlusts Gebühren, und aus 1,5R werden nach Gebühren 0,59R.
 
-```
-scanner -> news -> entry -> exit -> timemachine -> budget -> risk -> broker   (one trade)
-alerts: stop, target, flat by the close                                       (while it is open)
-news / analyst / pelosi                                                        (on a schedule)
-```
-
-An example, the trade in the reel: Tesla, Monday October 19 2026, real data.
-
-1. **`/trader-scanner`** at 10:15 AM ET: of the 231 charts in the reel's
-   scan, 42 had closed above their 15-minute opening range. TSLA is one: range 354.47 to 362.18,
-   the 10:10 candle closed at 364.18, 0.55 % over the top.
-2. **`/trader-news`**: the morning's TSLA headlines, in New York time
-   ("Tesla-SpaceX Merger Mania Strikes Wall Street Ahead of Earnings", 8:04,
-   tagged earnings and deal). Tesla reports this week: a day trade is out
-   before the close, so it is not exposed to the report.
-3. **`/trader-entry`** watched TSLA bar by bar. At 10:12 it said waiting (the
-   10:10 bar was still forming). At 10:15 it said triggered: the first
-   5-minute close above the range, 364.18.
-4. **`/trader-exit`** set the plan before the entry: stop at the range's
-   midpoint, 358.32, so 5.86 a share at risk; target one times that risk,
-   370.04; flat by 3:55 PM either way.
-5. **`/trader-timemachine`** replayed the rest of the day 10,000 times, each
-   5-minute candle drawn from TSLA's own candles at that time of day over the
-   previous 59 sessions (seed 19, so anyone can repeat it): target first
-   29.4 %, stop first 25.5 %, still open at the close 45.1 %. It also re-ran
-   the same rule on those 59 real sessions: it fired 33 times, 13 hit the
-   target, 15 the stop, 5 neither. Its verdict: close to a coin flip. That is
-   the point of looking before you risk a dollar.
-6. **`/trader-budget`** with a $5,000 account and a $50 max loss per trade:
-   50 / 5.86 = 8 shares ($2,913.44). If the stop fills at 358.32, the loss is
-   $46.88. It writes one bracket order: buy 8 TSLA, stop-loss 358.32,
-   take-profit 370.04.
-7. **`/trader-risk`** checks it against your limits: the max loss, the daily
-   loss limit, trades per day, reward to risk, the entry window, position
-   size and cash. PASS or BLOCK, with the reason.
-8. **`/trader-broker`** shows you the ticket in plain words. You type yes for
-   that exact order. Claude calls your brokerage connector (Alpaca's MCP
-   server, paper account by default), and Claude's own "Allow once / Deny"
-   card asks you one more time.
-9. **`/trader-alerts`** rings on the stop, the target and at 3:55 PM to
-   flatten whatever is still open.
-
-## The tools
-
-All standard-library Python. The data tools read public endpoints and are
-polite about it.
+## Befehle
 
 ```bash
-python3 trader-scanner/scan.py universe                                # ~5,900 US stocks, Nasdaq Trader
-python3 trader-scanner/scan.py daily                                   # pre-market setups, whole universe
-python3 trader-scanner/scan.py orb --at 10:15                          # opening-range breakouts so far
-python3 trader-news/news.py --tickers TSLA --hours 12                  # headlines, 8-Ks, today's move
-python3 trader-entry/entry.py check TSLA --setup orb                   # waiting / triggered / expired
-python3 trader-entry/entry.py watch TSLA --every 30                    # bar by bar until it triggers
-python3 trader-exit/exit.py plan --stop or-mid --target 1R --write     # -> trader/plan.json
-python3 trader-timemachine/timemachine.py run --write                  # 10,000 replays + the history
-python3 trader-budget/size.py --write                                  # -> trader/orders.json
-python3 trader-risk/check.py                                           # PASS / BLOCK per order
-python3 trader-broker/ticket.py show                                   # the tickets, READY or not
-python3 trader-alerts/alerts.py add --from-plan                        # stop, target, flat by close
-python3 trader-alerts/alerts.py check                                  # rings what hit, once
-python3 trader-analyst/facts.py TSLA                                   # quarters, growth, EPS
-python3 trader-pelosi/ptr.py index --member pelosi                     # her PTRs this year
+python3 trader-scanner/scan.py universe                       # handelbare USDT-Paare -> trader/universe.txt
+python3 trader-scanner/scan.py orb                            # Breakouts der laufenden Sitzung
+python3 trader-entry/entry.py check BTCUSDT --write           # -> trader/entry.json
+python3 trader-exit/exit.py plan --target 4R --write          # -> trader/plan.json
+python3 trader-timemachine/timemachine.py run --write         # 10.000 Simulationen + Historie
+python3 trader-budget/size.py --write                         # -> trader/orders.json (Kauf + OCO)
+python3 trader-risk/check.py                                  # PASS / BLOCK
+python3 trader-broker/ticket.py show                          # das Ticket
+python3 trader-broker/ticket.py approve --index 1 --reply "yes"
+python3 trader-broker/ticket.py place --index 1 --confirm <Code>
+python3 trader-alerts/alerts.py add --from-plan               # Stop, Ziel, exit_by
+python3 trader-alerts/alerts.py check
+python3 trader-broker/ticket.py flatten --symbol BTCUSDT      # bei exit_by: OCO stornieren, verkaufen
 ```
+
+## Keine Order ohne Ihre Bestätigung
+
+`ticket.py place` sendet nur, wenn **alle drei** Bedingungen erfüllt sind:
+
+1. `/trader-risk` hat **genau diese Order** (per Fingerprint) in dieser Sitzung mit PASS geprüft. Jede Änderung an Menge oder Preis braucht eine neue Prüfung.
+2. Sie haben **für genau diese Order** ausdrücklich „yes“ (oder „ja“) geschrieben. „ok“, „sure“, „yes to all“, ein Ja mit Bedingung oder eines, das ein anderes Paar oder eine andere Menge nennt, zählt nicht. `approve` gibt dann einen **Einmal-Code** aus (gespeichert nur als Hash).
+3. `place` wird mit diesem Code **innerhalb von 5 Minuten** aufgerufen. Der Code gilt einmal und nur für das Ziel, für das das Ja gegeben wurde (ein Testnet-Ja platziert nie live).
+
+Ein Ja gilt für das Paket aus Einstieg und Schutz-OCO, denn ohne OCO wäre die Position ungeschützt. Binance kennt keine Bracket-Order: `place` kauft (`POST /api/v3/order`), liest die tatsächlich erhaltene Menge und setzt sofort die OCO (`POST /api/v3/orderList/oco`, Ziel als LIMIT_MAKER, Stop als STOP_LOSS bzw. STOP_LOSS_LIMIT). Lehnt Binance die OCO ab, meldet das Tool laut **UNPROTECTED** und versucht nichts automatisch erneut.
+
+Die Tests beweisen das offline gegen eine nachgebaute Börse: Ohne PASS, ohne Ja, mit falschem oder abgelaufenem Code, nach einer Änderung der Order oder beim Wechsel Testnet/Live wird **kein einziger** Order-Aufruf gesendet.
+
+## Testnet-Durchlauf (scanner bis broker)
+
+So prüfen Sie die ganze Kette mit Spielgeld:
+
+```bash
+mkdir -p trader && cp config.example.json trader/config.json
+python3 trader-broker/ticket.py account                       # Testnet-Guthaben
+python3 trader-scanner/scan.py orb                            # nach dem Ende der Opening Range
+python3 trader-entry/entry.py check BTCUSDT --write           # oder watch, bis es auslöst
+python3 trader-exit/exit.py plan --target 3R --write
+python3 trader-timemachine/timemachine.py run --write
+python3 trader-budget/size.py --write
+python3 trader-risk/check.py
+python3 trader-broker/ticket.py validate --index 1             # Binance prüft die Kauforder, nichts wird platziert
+python3 trader-broker/ticket.py show
+python3 trader-broker/ticket.py approve --index 1 --reply "yes"
+python3 trader-broker/ticket.py place --index 1 --confirm <Code>
+python3 trader-broker/ticket.py status                        # Kauf FILLED, OCO EXECUTING
+python3 trader-alerts/alerts.py add --from-plan && python3 trader-alerts/alerts.py check
+```
+
+Hinweise zum Testnet:
+- Das Testnet hat eigene Preise und dünne Orderbücher, und es wird gelegentlich zurückgesetzt. Seine Kurse können vom echten Markt abweichen, und die Timemachine findet dort eventuell zu wenig Historie (sie sagt dann klar „needs at least 20“).
+- Die Stop- und Zielpreise müssen zum **Testnet**-Kurs passen, sonst lehnt Binance die OCO ab. Deshalb liest `market_data: "trading"` die Kerzen vom Testnet selbst.
+- Für eine kleine Position: `budget` z. B. auf 100 und `max_position_pct` auf 20 setzen. Achten Sie aber auf das Mindest-Notional (meist 5 USDT pro OCO-Bein), sonst lehnt budget ab.
+
+**Stand dieses Umbaus:** Aus der Bau-Umgebung war kein Binance-Host erreichbar. Der Durchlauf ist offline gegen eine nachgebaute Börse getestet (`tests/test_pipeline.py`, `tests/test_broker.py`), **gegen das echte Testnet noch nicht.** Bitte führen Sie den Durchlauf oben einmal aus, bevor Sie sich auf das Werkzeug verlassen.
+
+## Live gehen
+
+Live ist allein Ihre Entscheidung. Es braucht **beides**: `"testnet": false` in `trader/config.json` **und** `--live` bei jedem Aufruf, der Binance anspricht. Fehlt eines davon, verweigert der Client. Ein Ja, das für ein Testnet-Ticket gegeben wurde, platziert nie live.
+
+## Risiken
+
+- **Keine Anlageberatung.** Das Werkzeug liest Daten und rechnet. Es kennt Ihre Lage nicht und sieht nicht in die Zukunft. Sie können Geld verlieren, auch mehr als geplant.
+- **Krypto handelt 24/7** und schwankt stark. Eine Nachricht, ein Hack, ein Delisting oder eine Liquidationskaskade kann den Kurs in Sekunden bewegen.
+- **Ein Stop ist ein Plan, keine Garantie.** STOP_LOSS füllt zum Marktpreis, in schnellen Märkten deutlich schlechter. STOP_LOSS_LIMIT kann bei einem Kurssprung **gar nicht** füllen, dann ist die Position ungeschützt.
+- **Zwischen Kauf und OCO** liegt ein kurzer Moment ohne Schutz. Scheitert die OCO, meldet das Tool das laut; Sie müssen dann handeln (`protect` oder `flatten`).
+- **Gebühren und Staub:** Bei kleinen Positionen frisst die Rundung auf den `stepSize` einen ganzen Step. Budget lehnt solche Trades ab, kleine Reste („Dust“) bleiben trotzdem im Konto.
+- **Die Timemachine ist eine Simulation, keine Vorhersage.** Sie baut nur aus den letzten 60 Tagen. Die Beispielstrategie verliert in ihren eigenen Daten nach Gebühren, und das Tool sagt das auch so.
+- **Rate-Limits:** Zu viele Anfragen führen zu HTTP 429 und bei Wiederholung zu einer IP-Sperre (418, 2 Minuten bis 3 Tage). Der Client drosselt selbst und wiederholt nie stumpf.
+- **Börsenrisiko:** Guthaben auf einer Börse sind nicht wie Bankeinlagen geschützt.
+- **Steuern:** Gewinne aus Krypto-Verkäufen können steuerpflichtig sein (in Deutschland u. a. private Veräußerungsgeschäfte bei Haltedauer unter einem Jahr). Dies ist keine Steuerberatung.
+
+## Krypto-News (Vorschläge)
+
+`/trader-news` ist für Aktien gebaut und bleibt vorerst deaktiviert. Für Krypto kämen diese frei nutzbaren Quellen in Frage. Keine davon ist eingebaut; das geschieht erst nach Ihrer Zustimmung, und die Nutzungsbedingungen wären vorher zu prüfen:
+
+1. **CoinDesk RSS**: allgemeine Krypto-Nachrichten als RSS-Feed, ohne Key.
+2. **Cointelegraph RSS**: Nachrichten-Feeds, auch nach Themen, ohne Key.
+3. **CryptoPanic API**: aggregierte Schlagzeilen pro Coin (z. B. BTC, ETH), mit kostenlosem Token; passt am besten zur Watchlist, braucht aber einen eigenen Key.
+
+## Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-The tests run offline, on fixtures cut from real data: TSLA's 5-minute bars
-for the 60 days to October 19 2026, the 10:15 AM opening-range scan, Yahoo's
-TSLA headlines that morning, the House Clerk's 2026 index, real PTR text and
-real XBRL facts. They reproduce every number in the example above.
+Alle Tests laufen offline: `tests/_load.py` sperrt jeden Netzwerkzugriff, ein Test, der ins Netz will, schlägt fehl. Geprüft werden unter anderem:
+- die Kerzen-Normalisierung,
+- die Rundung auf `stepSize`/`tickSize`,
+- die Gebühren im Max-Verlust,
+- jeder BLOCK-Fall von risk,
+- die Sitzung über Mitternacht UTC,
+- die Signatur gegen das offizielle Beispiel der Binance-Doku,
+- Rate-Limits (429/418),
+- die Freigabe-Sperren des Brokers,
+- ein kompletter Pipeline-Durchlauf.
 
-## Fine print
+**Die Fixtures sind synthetisch** (`tests/fixtures/binance/README.md`): Sie haben exakt das dokumentierte Format der Binance-Antworten, die Kurse sind aber ein gesetzter Zufallspfad, weil die Bau-Umgebung Binance nicht erreichen konnte. `python3 tests/record_fixtures.py` zeichnet auf einem Rechner mit Zugang echte öffentliche Antworten auf (ohne Key). Danach müssen die Erwartungswerte einiger Tests angepasst werden.
 
-**Not financial advice.** This is software that reads public data and does
-arithmetic. It does not know your situation and it cannot see the future.
-Most people who day trade lose money. You can lose money. Decide for
-yourself, and talk to a licensed professional if you need advice.
-
-**No trade goes through until you say yes.** Only `/trader-broker` can lead to
-an order, and only after `/trader-risk` passes that exact order and you type
-yes for it in the chat. Set your brokerage tool to "Needs approval" in Claude
-(Customize, Connectors, tool permissions), never "Always allow", so Claude's
-own "Allow once / Deny" card is a second check. No options, margin, short
-selling or leverage unless you turn them on.
-
-**Paper first.** `"paper": true` is the default in `config.example.json`, and
-Alpaca's MCP server defaults to its paper account. Keys live in environment
-variables, never in the chat.
-
-**The Time Machine is a simulation, not a prediction.** It is built from the
-stock's own last 60 days of 5-minute bars. The future can do things those 60
-days never did: an earnings report, a halt, a headline. Treat its odds as a
-reality check, never as a promise.
-
-**A stop is a plan, not a guarantee.** In a fast market or across a gap, a
-stop order can fill well past its price. The max loss shown is the loss at
-the stop price.
-
-**The data is free and unofficial.** Yahoo Finance's chart endpoint is not an
-official API: it can lag, change or rate-limit you. The scanner and the entry
-timer read 1-minute or 5-minute bars, not every tick. Check anything that
-matters against your broker before you act on it.
-
-**Day-trading rules.** FINRA removed the $25,000 pattern-day-trader minimum
-on June 4, 2026 (Regulatory Notice 26-10), and brokers may phase the change
-in until October 20, 2027, so yours may still apply the old rule. If it does,
-set `"pdt_guard": true` and `/trader-risk` counts your day trades.
-
-**Congress's trades are public, not inside information.** Members must disclose
-trades over $1,000 within 45 days (the STOCK Act). The Pelosi skill reads those
-public filings the minute they post.
-
-**Taxes.** Day-trading gains are short-term gains, and frequent trading makes
-wash sales likely. Nothing here is tax advice.
-
-## Files
+## Dateien
 
 ```
-trader-scanner/     SKILL.md, scan.py
-trader-news/        SKILL.md, news.py
-trader-entry/       SKILL.md, entry.py
-trader-exit/        SKILL.md, exit.py
-trader-timemachine/ SKILL.md, timemachine.py
-trader-risk/        SKILL.md, check.py
-trader-budget/      SKILL.md, size.py, config.example.json, targets.example.json
-trader-broker/      SKILL.md, ticket.py, claude_desktop_config.example.json
-trader-alerts/      SKILL.md, alerts.py, alerts.example.json
-trader-analyst/     SKILL.md, facts.py, metrics.example.json
-trader-pelosi/      SKILL.md, ptr.py
-tests/              unittest suite + offline fixtures
+common/              binance_client.py, symbol_filters.py, trading_session.py, trader_config.py, order_math.py
+config.example.json  Vorlage für trader/config.json (ohne Keys)
+trader-scanner/      SKILL.md, scan.py
+trader-entry/        SKILL.md, entry.py
+trader-exit/         SKILL.md, exit.py
+trader-timemachine/  SKILL.md, timemachine.py
+trader-budget/       SKILL.md, size.py
+trader-risk/         SKILL.md, check.py
+trader-broker/       SKILL.md, ticket.py, claude_settings.example.json
+trader-alerts/       SKILL.md, alerts.py, alerts.example.json
+trader-news/         nicht genutzt (Aktien-News)
+trader-analyst/      nicht genutzt (Quartalszahlen)
+trader-pelosi/       nicht genutzt (Kongress-Trades)
+tests/               unittest-Suite, Binance-Fixtures, record_fixtures.py
 ```
 
-MIT. Made by [Jake Schincariol](https://opusjake.ai).
+MIT-Lizenz, siehe `LICENSE`. Original: [Jake Schincariol](https://opusjake.ai), [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill).

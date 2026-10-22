@@ -1,132 +1,112 @@
 ---
 name: trader-exit
 description: >-
-  Exit Planner. Sets your stop and your target before you enter, so you know
-  when to get out. Reads the entry from trader-entry (or a price you give),
-  puts the stop at the opening-range midpoint by default (or the range low,
-  your price, a percent, or a multiple of the ATR), rounds it down to the
-  cent, and sets the target at 2R (or 1R, or your price). Refuses a stop at or
-  above the entry, a target at or below it, or a stop too tight to survive the
-  spread, and says why. Writes trader/plan.json for the Time Machine, the
-  Budget Manager and Price Alerts. Long side only. Use when the user says
-  "where's my stop", "set my stop and target", "plan the exit", "when do I get
-  out", "stop loss", "what's my R", "risk reward", or right after
-  /trader-entry triggers, before /trader-timemachine.
-argument-hint: "[--stop or-mid|or-low|price:X|pct:X|atr:K] [--target 2R|1R|price:X]"
+  Exit Planner for Binance spot. Sets your stop, your target and your latest
+  exit time before you enter, so you know when to get out. Reads the entry from
+  trader-entry (or a price you give), puts the stop at the opening-range
+  midpoint or low, a percent, a price or an ATR multiple, the target at an R
+  multiple or a price, rounds both to the symbol's tick size from Binance's
+  exchangeInfo, and sets exit_by = entry + max_hold_minutes (crypto has no
+  closing bell). Shows reward:risk before and after fees and warns when fees
+  eat the risk. Writes trader/plan.json. Long only. Use when the user says
+  "where should my stop be", "set my stop", "what's my target", "plan the
+  exit", "how long do I hold", "risk reward", or after /trader-entry
+  triggers, before /trader-budget.
+argument-hint: "[--stop or-mid|or-low|pct:X|price:X|atr:K] [--target 2R|price:X]"
 ---
 
 # trader-exit
 
-The Exit Planner decides how a trade ends before it starts. The stop is where
-the setup has failed. The target is where you take what you came for. Both
-are set BEFORE the entry, written down and handed on, so nobody has to decide
-anything in the middle of a fast move. A stop is a plan, not a guarantee: a
-gap or a fast market can fill past it. Day trading loses most people money,
-and a neat plan does not change that.
+The Exit Planner decides how the trade ends before it begins: where you are
+wrong (the stop), where you take the money (the target) and when you are out
+anyway (the max hold). Set before the entry and never moved further away.
 
 `${CLAUDE_SKILL_DIR}` below is this skill's folder (where this SKILL.md lives).
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan                          # trader/entry.json: midpoint stop, 2R target
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop or-mid --target 1R --write
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop atr:1.5           # needs the session's bars (Yahoo or --offline)
-python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol TSLA --entry 364.18 --or-high 362.18 --or-low 354.47
-python3 "${CLAUDE_SKILL_DIR}/exit.py" show                          # the current trader/plan.json
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan                                 # from trader/entry.json: or-mid stop, 2R
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --target 4R --write             # -> trader/plan.json
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --stop atr:1.5                  # ATR on the session's candles
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --symbol ETHUSDT --entry 2484.49 --setup level --stop pct:1
+python3 "${CLAUDE_SKILL_DIR}/exit.py" plan --max-hold 120                  # out after 2 hours at the latest
+python3 "${CLAUDE_SKILL_DIR}/exit.py" show
 ```
 
-Other flags: `--flat-by 15:55`, `--json`, `--now "2026-10-19 10:15"` (New
-York time), `--entry PRICE` with a waiting entry.json to plan ahead, `--setup
-level`, `--offline FILE` (a saved Yahoo chart JSON for an ATR stop).
+`--now` pins the clock (UTC). `--exchange-info FILE` reads saved symbol rules;
+otherwise they come from Binance (weight 20) and are cached 6 hours in `trader/cache/`.
 
 ## What it reads and writes
 
 | file | what |
 | --- | --- |
-| `trader/entry.json` | the trigger from trader-entry: symbol, entry price, time, bar, opening range |
-| `trader/config.json` | `flat_by` (15:55) and `min_reward_risk` (1.0: a note here, trader-risk enforces it) |
-| Yahoo chart API | only for an `atr:K` stop: the session's bars up to the entry bar, free and unofficial |
-| `trader/plan.json` | with `--write`: entry, stop and its rule, target and its R, risk a share, reward:risk, flat by. trader-timemachine, trader-budget and trader-alerts read it |
+| `trader/entry.json` | the trigger from trader-entry |
+| `trader/config.json` | `max_hold_minutes` (240), `fee_rate` (0.001), `min_reward_risk` (1.5) |
+| `trader/plan.json` | entry, entry time, stop, target, risk a unit, reward:risk before and after fees, tick size, `exit_by` |
 
-## Stops and targets
+## The rules
 
-| stop | where it goes |
+| stop | where |
 | --- | --- |
-| `or-mid` | the opening-range midpoint (the default for an opening-range breakout) |
-| `or-low` | the opening-range low: wider, so fewer shares for the same max loss |
-| `price:X` | your price |
+| `or-mid` | the opening-range midpoint (the default after an orb trigger) |
+| `or-low` | the opening-range low |
 | `pct:X` | X percent under the entry |
-| `atr:K` | K times the 14-bar ATR under the entry, on the session's bars up to the entry bar. With fewer than 14 bars by then it averages all of them and says so |
+| `price:X` | your price |
+| `atr:K` | K times the 14-candle ATR under the entry, on the session's candles up to the entry |
 
-A level setup has no opening range to lean on, so it needs a stop you name.
+A stop rounds DOWN to the tick (away from the entry); a target rounds to the
+nearest tick. Refused, with the reason: a stop at or above the entry, a target
+at or below it, a risk under 0.05 % of the price, an entry that has not triggered,
+a symbol that is not trading.
 
-- **Rounding.** The stop rounds AWAY from the entry to the cent (down, for a
-  long). Risk = entry minus stop. Target = entry + R x risk, rounded half up
-  to the cent. `2R` by default; `1R`, `1.5R` or `price:X` also work.
-- **Refused, with the reason.** A stop at or above the entry. A target at or
-  below it. A risk under 0.05% of the price: too tight to survive the
-  spread, normal wiggle would stop you out. An entry.json that has not
-  triggered (unless you give `--entry`). A short: v2 plans longs only.
-- **Flat by.** 15:55 by default (or `flat_by` in the config). Out by then,
-  win or lose, no overnight hold. On a 1:00 p.m. early close it moves up to
-  12:55. An entry at or after the flat-by time is refused.
+**Fees.** Binance charges `fee_rate` (0.1 %) on each side. A tight stop makes the
+fees a big part of the loss: with BTC at 52,730 and a 0.35 % stop, the fees are
+56 % of the risk, and a 1.5R target is only 0.59R after fees. The plan shows both
+numbers; trader-risk enforces `min_reward_risk` AFTER fees.
+
+**Max hold.** `exit_by` = the entry candle's close + `max_hold_minutes`. It may be
+after midnight UTC; that is fine. trader-alerts rings at that moment and
+trader-broker builds the closing ticket.
 
 ## Steps
 
-1. Run it right after `/trader-entry` triggers. Before that, `--entry PRICE`
-   plans ahead at the level you expect.
-2. Use the default stop for an opening-range breakout unless the user names
-   another. A level setup needs one: ask.
-3. Run `exit.py plan --write`. Read back the entry, the stop and its rule,
-   the target and its rule, the risk a share, reward:risk and flat by.
-4. If it refuses, say the reason and the fix (a wider stop, a farther
-   target). Never loosen anything on your own.
-5. Say once that the stop is a plan, not a guarantee.
-6. Hand off to `/trader-timemachine` to replay the plan, then `/trader-budget`
-   to size it to the max loss per trade. Offer `/trader-alerts` for the stop,
-   the target and the flat-by time. Claude can keep `entry.py watch` running
-   in the background or on a `/loop` until a setup triggers, then come here.
+1. `exit.py plan` (add `--target` / `--stop` if the user wants other rules).
+2. Show the plan: entry, stop, target, risk a unit, reward:risk before AND after
+   fees, exit by. Read the notes out loud, especially the fee note.
+3. `exit.py plan ... --write`, then `/trader-timemachine` replays it and
+   `/trader-budget` sizes it.
 
-## Example: the reel
-
-TSLA, Monday 2026-10-19. The entry is 364.18 at 10:15 AM (the 10:10 bar,
-bar 8) and the opening range is 354.47 to 362.18. `exit.py plan --stop
-or-mid --target 1R --write`:
+## Example: the test data
 
 ```
-Exit plan: TSLA long, Mon 2026-10-19, opening-range breakout on 5-minute bars
-  Entry         $364.18 at 10:15 AM (bar 8)
-  Stop          $358.32  opening-range midpoint: ($362.18 + $354.47) / 2 = $358.325, rounded down
-  Target        $370.04  1R (one times the risk)
-  Risk a share  $5.86 (1.61% of the entry)
-  Reward:risk   1.0
-  Flat by       15:55 ET, win or lose: no overnight hold
+python3 exit.py plan --from trader/entry.json --target 4R
+  Entry          52,730.00 at 2026-10-19 02:00:00 UTC (candle 23)
+  Stop           52,545.29  opening-range midpoint: (52680.36 + 52410.22) / 2 = 52545.29
+  Target         53,468.84  4R (four times the risk)
+  Risk a unit    184.71 (0.35% of the entry)
+  Reward:risk    4.0, after 0.1% fees a side 2.18
+  Exit by        2026-10-19 06:00:00 UTC at the latest (max hold 240 minutes), win or lose
+Note: Fees eat 56 % of the risk at the stop: a stop this close to the entry costs a lot in fees.
 ```
-
-The default 2R target would be 364.18 + 2 x 5.86 = 375.90. trader-budget then
-sizes it: a $50 max loss per trade buys floor(50 / 5.86) = 8 shares.
 
 ## Rules
 
-- The stop and the target are set before the entry, never after.
-- Never move a stop further from the entry once the trade is on.
-- Plain numbers only: entry, stop, target, risk a share, reward:risk. It
-  never prints a P&L or a return.
-- Nothing here promises winning trades or money. A 1R target is not a
-  prediction that the price gets there.
-- Long side only. v2 plans longs only.
+- The stop is set before the entry and never moved further away.
+- Always show reward:risk after fees next to the plain one.
+- Say "a stop is a plan, not a guarantee": a fast market can fill past it.
 
 ## What it never does
 
-It never places an order, never sizes a position, never widens a stop to
-make a plan pass, and never calls a stop a guarantee.
+It never places an order, never sizes one, never plans a short, and never drops
+the max hold.
 
 ## Safety
 
 - Education and tooling, not financial advice. A PASS is a rules check, not a recommendation.
-- Paper trading by default (`"paper": true`). Going live is the user's own decision, in their own config.
+- Testnet by default (`"testnet": true`). Live trading needs `"testnet": false` in the config AND `--live`,
+  and is the user's own decision.
 - Nothing in this pack places an order except trader-broker, and only when all three hold: trader-risk
-  passed that exact order today, the user typed an explicit yes for that one order in the chat, and the
-  user clicked Allow once on Claude's own card because the order tool is set to "Needs approval"
-  (Customize > Connectors > tool permissions). Never set an order tool to "Always allow".
-- No options, margin, short selling or leverage unless the config allows it and the user confirms.
-- Broker keys live in environment variables or the Claude Desktop config, never in the chat.
+  passed that exact order in this session, the user typed an explicit yes for that one order, and
+  `ticket.py place` is called with the one-time code within 5 minutes. Keep
+  `Bash(python3 *ticket.py place*)` on "ask" in Claude Code; never "allow".
+- Spot only: no margin, futures, leverage, short selling or withdrawals. The client cannot call those endpoints.
+- API keys live in `BINANCE_API_KEY` / `BINANCE_API_SECRET` in the environment, never in a file, the chat or a log.
