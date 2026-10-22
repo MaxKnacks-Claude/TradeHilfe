@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(python3 *ticket.py place*)",
+      "Bash(python3 *ticket.py protect*)"
+    ],
+    "deny": [
+      "Bash(*BINANCE_API_SECRET*)",
+      "Bash(*BINANCE_API_KEY*)"
+    ]
+  }
+}
