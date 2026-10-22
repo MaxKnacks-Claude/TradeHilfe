@@ -40,7 +40,14 @@ class Repo(unittest.TestCase):
 
     def test_root_matches_the_reel(self):
         root = sorted(d for d in os.listdir(ROOT) if not d.startswith(".git"))
-        self.assertEqual(root, sorted([".claude-plugin", "LICENSE", "README.md", "tests"] + SKILLS))
+        self.assertEqual(root, sorted([".claude-plugin", "LICENSE", "README.md", "common",
+                                      "config.example.json", "tests"] + SKILLS))
+
+    def test_gitignore_keeps_the_trader_folder_and_local_configs_out(self):
+        with open(os.path.join(ROOT, ".gitignore"), encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh]
+        for pat in ("trader/", "*.local.json", "config.json", "!config.example.json", ".env"):
+            self.assertIn(pat, lines)
 
     def test_frontmatter_name_and_description(self):
         for s in SKILLS:

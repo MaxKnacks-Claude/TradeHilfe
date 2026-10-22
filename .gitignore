@@ -1,0 +1,11 @@
+# Your trading state, orders, logs and config: never commit them
+trader/
+*.local.json
+config.json
+!config.example.json
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
