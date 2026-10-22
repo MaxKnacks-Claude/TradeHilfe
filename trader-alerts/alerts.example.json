@@ -1,9 +1,9 @@
 {
   "rules": [
-    {"id": "opening-bell", "type": "opening_bell"},
-    {"id": "tsla-plan-stop", "symbol": "TSLA", "type": "stop", "price": 358.32, "note": "plan stop: opening-range midpoint", "date": "2026-10-19"},
-    {"id": "tsla-plan-target", "symbol": "TSLA", "type": "target", "price": 370.04, "note": "plan target: 1R (one times the risk)", "date": "2026-10-19"},
-    {"id": "tsla-flat-by", "symbol": "TSLA", "type": "time", "at": "15:55", "label": "flat by close", "before_close": true, "date": "2026-10-19"},
-    {"id": "tsla-move-3", "symbol": "TSLA", "type": "pct_move", "pct": 3}
+    {"id": "session-start", "type": "session_start"},
+    {"id": "btcusdt-plan-stop", "symbol": "BTCUSDT", "type": "stop", "price": 52545.29, "note": "plan stop: opening-range midpoint", "expires_utc": "2026-10-19T07:00:00Z"},
+    {"id": "btcusdt-plan-target", "symbol": "BTCUSDT", "type": "target", "price": 53007.07, "note": "plan target: 1.5R", "expires_utc": "2026-10-19T07:00:00Z"},
+    {"id": "btcusdt-exit-by", "symbol": "BTCUSDT", "type": "exit_by", "at_utc": "2026-10-19T06:00:00Z", "max_hold_minutes": 240, "label": "max hold reached", "expires_utc": "2026-10-19T07:00:00Z"},
+    {"id": "ethusdt-move-3", "symbol": "ETHUSDT", "type": "pct_move", "pct": 3}
   ]
 }

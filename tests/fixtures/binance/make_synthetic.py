@@ -58,6 +58,15 @@ def walk(seed, start_price, start, n, step_s, vol, places, qty_places=5, drift=0
     return rows
 
 
+def set_close(rows, i, close, places):
+    """Move one candle's close (open = the previous close), keeping high >= open/close >= low."""
+    r = rows[i]
+    o = float(rows[i - 1][4]) if i else float(r[1])
+    r[1], r[4] = fmt(o, places), fmt(close, places)
+    r[2] = fmt(max(o, close) * 1.004, places)
+    r[3] = fmt(min(o, close) * 0.996, places)
+
+
 def orb_breakout(rows, bars_range=3, last=72):
     """(bar index, high) of the first 5-minute close above the opening range of the day the rows start."""
     hi = max(float(r[2]) for r in rows[:bars_range])
@@ -194,6 +203,14 @@ def main():
             bundle5[sym] = walk(seed + 7 * (k + 1), s[8], day0, 288, 300, s[9], places)
         bundle1d[sym] = walk(seed + 13 * (k + 1), s[8] * 0.9, day0 - datetime.timedelta(days=120), 121, 86400,
                              s[9] * 12, places, profile=False)
+    # two clear daily setups, so the daily scan has something to find:
+    # ETHUSDT closes 3 % over its 20-day closing high on the last full day (breakout_20d),
+    # SOLUSDT falls 3 % a day for the last 14 full days (oversold)
+    eth = bundle1d["ETHUSDT"]
+    set_close(eth, len(eth) - 2, max(float(r[4]) for r in eth[-22:-2]) * 1.03, 2)
+    sol = bundle1d["SOLUSDT"]
+    for i in range(len(sol) - 15, len(sol) - 1):
+        set_close(sol, i, float(sol[i - 1][4]) * 0.97, 2)
     gz_json("scan-5m-%s.json.gz" % DAY, bundle5)
     gz_json("scan-1d-%s.json.gz" % DAY, bundle1d)
 
