@@ -126,20 +126,21 @@ class Repo(unittest.TestCase):
                         self.assertNotIn(bad, src, "%s/%s" % (s, f))
 
     def test_day_trading_limits_ship_in_the_example_config(self):
-        with open(os.path.join(ROOT, "trader-budget", "config.example.json")) as fh:
+        with open(os.path.join(ROOT, "config.example.json")) as fh:
             cfg = json.load(fh)
-        for k in ("max_loss_per_trade_usd", "max_daily_loss_usd", "max_trades_per_day",
-                  "min_reward_risk", "require_stop", "no_entries_after", "flat_by"):
+        for k in ("max_loss_per_trade", "max_daily_loss", "max_trades_per_day", "min_reward_risk", "require_stop",
+                  "fee_rate", "session_start_utc", "opening_range_minutes", "entry_window_minutes",
+                  "max_hold_minutes", "quote_asset", "symbols"):
             self.assertIn(k, cfg, k)
         self.assertIs(cfg["require_stop"], True)
-        self.assertIs(cfg.get("allow_short", False), False)
-        self.assertIs(cfg.get("allow_margin", False), False)
+        self.assertEqual(cfg["fee_rate"], 0.001)
+        for k in cfg:   # no switch that turns on margin, futures, shorts or leverage, and no keys in the file
+            self.assertNotRegex(k.lower(), r"^allow_|margin|futures|^leverage|short|api_?key|secret", k)
 
-    def test_paper_trading_is_the_default(self):
-        with open(os.path.join(ROOT, "trader-budget", "config.example.json")) as fh:
+    def test_testnet_is_the_default(self):
+        with open(os.path.join(ROOT, "config.example.json")) as fh:
             cfg = json.load(fh)
-        self.assertIs(cfg["paper"], True)
-        self.assertIs(cfg.get("allow_options", False), False)
+        self.assertIs(cfg["testnet"], True)
 
 
 if __name__ == "__main__":

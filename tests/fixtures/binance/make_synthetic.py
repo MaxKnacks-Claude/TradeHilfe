@@ -94,7 +94,7 @@ def symbol(sym, base, quote, tick, step, min_qty, max_qty, min_notional, status=
         {"filterType": "PRICE_FILTER", "minPrice": tick, "maxPrice": "1000000.00000000", "tickSize": tick},
         {"filterType": "LOT_SIZE", "minQty": min_qty, "maxQty": max_qty, "stepSize": step},
         {"filterType": "ICEBERG_PARTS", "limit": 10},
-        {"filterType": "MARKET_LOT_SIZE", "minQty": "0.00000000", "maxQty": market_step or "100.00000000",
+        {"filterType": "MARKET_LOT_SIZE", "minQty": "0.00000000", "maxQty": market_step or max_qty,
          "stepSize": "0.00000000"},
         {"filterType": "TRAILING_DELTA", "minTrailingAboveDelta": 10, "maxTrailingAboveDelta": 2000,
          "minTrailingBelowDelta": 10, "maxTrailingBelowDelta": 2000},
